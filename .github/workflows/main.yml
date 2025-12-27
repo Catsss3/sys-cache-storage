@@ -1,0 +1,35 @@
+
+name: Auto-Proxy-Scanner
+on:
+  schedule:
+    - cron: "0 */8 * * *" # Каждые 8 часов
+  workflow_dispatch: # Возможность запускать вручную
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.WORKFLOW_TOKEN }} # Твой токен для доступа к репо
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests google-generativeai
+
+      - name: Run Scanner
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} # Твой ключ Gemini
+        run: python scanner.py
+
+      - name: Commit and Push results
+        run: |
+          git config --local user.email "blondie@gemini.ai"
+          git config --local user.name "Blondie-Bot"
+          git add .
+          git commit -m "👱‍♀️ Blondie: Auto-update (Configs & Channels)" || exit 0
+          git push
