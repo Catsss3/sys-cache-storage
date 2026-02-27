@@ -16,10 +16,9 @@ def fetch_new_channels(api_key, existing):
     if not api_key: return existing
     try:
         client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents='Generate 20 active public Telegram channel names for VLESS configs. Format: @name'
-        )
+        # Бот ищет новые каналы независимо от старых
+        prompt = "Search for 20 active Telegram channels that share VLESS proxy configs. Return ONLY usernames like @name"
+        response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
         found = re.findall(r'@(\\w+)', response.text)
         return list(set(existing + found))
     except: return existing
@@ -31,7 +30,7 @@ def scrape_vless(channels):
         try:
             r = requests.get(f"https://t.me/s/{ch}", timeout=10, headers=headers)
             if r.status_code == 200:
-                collected.extend(re.findall(r'vless://[a-zA-Z0-9%@&?#=_.:/\\\\-]+', r.text))
+                collected.extend(re.findall(r'vless://[a-zA-Z0-9%@&?#=_.:/\\-]+', r.text))
         except: continue
     return list(set(collected))
 
