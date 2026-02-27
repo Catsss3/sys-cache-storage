@@ -16,8 +16,8 @@ def fetch_new_channels(api_key, existing):
     if not api_key: return existing
     try:
         client = genai.Client(api_key=api_key)
-        # Бот ищет новые каналы независимо от старых
-        prompt = "Search for 20 active Telegram channels that share VLESS proxy configs. Return ONLY usernames like @name"
+        # Агрессивный промпт с запретом на дублирование
+        prompt = f"Find 20 new active Telegram channels sharing VLESS/V2Ray configs. Do NOT include these channels which we already have: {existing[-50:]}. Return ONLY @usernames."
         response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
         found = re.findall(r'@(\\w+)', response.text)
         return list(set(existing + found))
