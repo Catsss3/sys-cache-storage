@@ -1,27 +1,21 @@
+
 import os, re, json, requests, random, socket
 from concurrent.futures import ThreadPoolExecutor
-try:
-    from google import genai
-except ImportError: pass
-
-def get_gemini_key():
-    return os.getenv('GEMINI_API_KEY')
 
 def load_channels(path):
     try:
         with open(path, 'r', encoding='utf-8') as f: return json.load(f)
     except: return ["v2ray_collector", "vpn_telegram_vless"]
 
-def fetch_new_channels(api_key, existing):
-    if not api_key: return existing
+def fetch_new_channels(existing):
     try:
-        client = genai.Client(api_key=api_key)
-        # Агрессивный промпт с запретом на дублирование
-        prompt = f"Find 20 new active Telegram channels sharing VLESS/V2Ray configs. Do NOT include these channels which we already have: {existing[-50:]}. Return ONLY @usernames."
-        response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
-        found = re.findall(r'@(\\w+)', response.text)
-        return list(set(existing + found))
-    except: return existing
+        url = "https://tlgrm.ru/channels/technology/vpn"
+        r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code == 200:
+            found = re.findall(r't\.me/s/([a-zA-Z0-9_]+)', r.text)
+            return list(set(existing + found))
+    except: pass
+    return existing
 
 def scrape_vless(channels):
     collected = []
@@ -36,7 +30,7 @@ def scrape_vless(channels):
 
 def is_tcp_alive(proxy_uri):
     try:
-        match = re.search(r"vless://[^@]+@([^:]+):(\\d+)", proxy_uri)
+        match = re.search(r"vless://[^@]+@([^:]+):(\d+)", proxy_uri)
         if not match: return False
         host, port = match.group(1), int(match.group(2))
         with socket.create_connection((host, port), timeout=1.5): return True
@@ -44,9 +38,8 @@ def is_tcp_alive(proxy_uri):
 
 def run():
     channels = load_channels("telegram_channels.json")
-    if random.random() < 0.4:
-        key = get_gemini_key()
-        channels = fetch_new_channels(key, channels)
+    if random.random() < 0.3:
+        channels = fetch_new_channels(channels)
         with open("telegram_channels.json", 'w') as f: json.dump(sorted(list(set(channels))), f, indent=2)
     raw_vless = scrape_vless(channels)
     valid_vless = []
@@ -54,7 +47,7 @@ def run():
         results = list(executor.map(is_tcp_alive, raw_vless))
         for i, alive in enumerate(results):
             if alive: valid_vless.append(raw_vless[i])
-    with open("live_configs.txt", "w") as f: f.write("\\n".join(valid_vless))
+    with open("live_configs.txt", "w") as f: f.write("\n".join(valid_vless))
 
 if __name__ == "__main__":
     run()
