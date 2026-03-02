@@ -1,53 +1,56 @@
-
-import os, re, json, requests, random, socket
+import os, re, requests, socket
 from concurrent.futures import ThreadPoolExecutor
 
-def load_channels(path):
-    try:
-        with open(path, 'r', encoding='utf-8') as f: return json.load(f)
-    except: return ["v2ray_collector", "vpn_telegram_vless"]
+SOURCE_FILE = "telegram_channels.json"
+OUTPUT_FILE = "live_configs.txt"
 
-def fetch_new_channels(existing):
+def load_targets(path):
+    if not os.path.exists(path): return []
+    with open(path, 'r', encoding='utf-8') as f: content = f.read()
+    raw_urls = re.findall(r'https?://[^\s,"\'\]]+', content)
+    urls = []
+    for u in raw_urls: urls.extend([p for p in re.split(r'(?=https://)', u) if p])
+    words = re.findall(r'[\w\d_-]{4,}', content)
+    exclude = ['https', 'http', 'github', 'raw', 'master', 'main', 'json', 'yaml']
+    targets = list(set(urls))
+    for w in words:
+        if w.lower() not in exclude and not any(w in u for u in urls):
+            targets.append(f"https://t.me/s/{w}")
+    return list(set(targets))
+
+def scrape_hy2(url):
     try:
-        url = "https://tlgrm.ru/channels/technology/vpn"
         r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
         if r.status_code == 200:
-            found = re.findall(r't\.me/s/([a-zA-Z0-9_]+)', r.text)
-            return list(set(existing + found))
+            return re.findall(r'hy2://[a-zA-Z0-9%@&?#=_.:/\\-]+', r.text)
     except: pass
-    return existing
+    return []
 
-def scrape_vless(channels):
-    collected = []
-    headers = {"User-Agent": "Mozilla/5.0"}
-    for ch in channels:
-        try:
-            r = requests.get(f"https://t.me/s/{ch}", timeout=10, headers=headers)
-            if r.status_code == 200:
-                collected.extend(re.findall(r'vless://[a-zA-Z0-9%@&?#=_.:/\\-]+', r.text))
-        except: continue
-    return list(set(collected))
-
-def is_tcp_alive(proxy_uri):
+def is_hy2_alive(uri):
     try:
-        match = re.search(r"vless://[^@]+@([^:]+):(\d+)", proxy_uri)
+        match = re.search(r"hy2://[^@]+@([^:]+):(\d+)", uri)
         if not match: return False
         host, port = match.group(1), int(match.group(2))
-        with socket.create_connection((host, port), timeout=1.5): return True
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.8)
+        s.sendto(b'', (host, port))
+        s.close()
+        return True
     except: return False
 
 def run():
-    channels = load_channels("telegram_channels.json")
-    if random.random() < 0.3:
-        channels = fetch_new_channels(channels)
-        with open("telegram_channels.json", 'w') as f: json.dump(sorted(list(set(channels))), f, indent=2)
-    raw_vless = scrape_vless(channels)
-    valid_vless = []
-    with ThreadPoolExecutor(max_workers=100) as executor:
-        results = list(executor.map(is_tcp_alive, raw_vless))
-        for i, alive in enumerate(results):
-            if alive: valid_vless.append(raw_vless[i])
-    with open("live_configs.txt", "w") as f: f.write("\n".join(valid_vless))
+    print("📡 Охота за Hy2 началась...")
+    targets = load_targets(SOURCE_FILE)
+    raw_configs = []
+    with ThreadPoolExecutor(max_workers=40) as ex:
+        results = list(ex.map(scrape_hy2, targets))
+        for res in results: raw_configs.extend(res)
+    unique_hy2 = list(set(raw_configs))
+    live_hy2 = []
+    with ThreadPoolExecutor(max_workers=100) as ex:
+        checks = list(ex.map(is_hy2_alive, unique_hy2))
+        live_hy2 = [unique_hy2[i] for i, ok in enumerate(checks) if ok]
+    with open(OUTPUT_FILE, "w", encoding='utf-8') as f: f.write("\n".join(live_hy2))
+    print(f"✅ Найдено живых Hy2: {len(live_hy2)}")
 
-if __name__ == "__main__":
-    run()
+if __name__ == '__main__': run()
