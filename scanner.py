@@ -6,7 +6,6 @@ OUTPUT_FILE = "live_configs.txt"
 
 def decode_base64(text):
     try:
-        # Убираем пробелы и лишние символы перед декодом
         clean_text = re.sub(r'[^a-zA-Z0-9+/=]', '', text.strip())
         return base64.b64decode(clean_text + '=' * (-len(clean_text) % 4)).decode('utf-8', errors='ignore')
     except: return text
@@ -17,46 +16,44 @@ def scrape_source(url):
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(url, timeout=25, headers=headers)
         if r.status_code != 200: 
-            print(f"❌ Ошибка {r.status_code} на {url}")
+            print(f"❌ Ошибка {r.status_code}")
             return []
         
-        raw_content = r.text
-        # Ищем Hy2 сразу в сыром виде
-        found = re.findall(r'hy2://[^\s,"\'\]]+', raw_content)
+        content = r.text
+        # Пробуем найти Hy2 сразу
+        found = re.findall(r'hy2://[^\s,"\'\]]+', content)
         
-        # Если не нашли, пробуем декодировать всё подряд (Base64)
+        # Если пусто - декодируем (для подписок)
         if not found:
-            decoded = decode_base64(raw_content)
+            decoded = decode_base64(content)
             found = re.findall(r'hy2://[^\s,"\'\]]+', decoded)
             
-        if found: print(f"✅ Найдено {len(found)} конфигов на {url}")
+        if found: print(f"✅ Найдено {len(found)} Hy2!")
         return found
-    except Exception as e:
-        print(f"⚠️ Ошибка на {url}: {e}")
-        return []
+    except: return []
 
 def run():
-    # Хардкод источников прямо в скрипт, чтобы не зависеть от JSON
+    # АКТУАЛЬНЫЕ ССЫЛКИ НА МАРТ 2026
     targets = [
-        "https://raw.githubusercontent.com/tbbatbb/Proxy/master/dist/v2ray.txt",
-        "https://raw.githubusercontent.com/vless-subscribe/v2ray/main/v2ray",
-        "https://raw.githubusercontent.com/Leon406/SubCrawler/main/sub/share/v2",
-        "https://raw.githubusercontent.com/Pawf3x/Free-Vpn-Configs/main/All_Configs_Sub.txt",
-        "https://raw.githubusercontent.com/LonUp/NodeList/main/v2ray/v2ray.txt",
-        "https://raw.githubusercontent.com/MoYuanJun/Free-Proxy/master/sub"
+        "https://raw.githubusercontent.com/freev2rayconfig/v2ray/main/v2ray",
+        "https://raw.githubusercontent.com/freev2rayconfig/v2ray/main/hysteria2",
+        "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2ray",
+        "https://sub.hf.space/hysteria2", # Специальный API-агрегатор
+        "https://v2rayfree.eu.org/hysteria2"
     ]
     
-    # Плюс добавляем из JSON если он есть
+    # Добавляем ТГ каналы из JSON (только те, что /s/)
     if os.path.exists(SOURCE_FILE):
         try:
             with open(SOURCE_FILE, 'r') as f:
                 data = json.load(f)
-                if isinstance(data, list): targets.extend(data)
+                for t in data:
+                    if 't.me' in t:
+                        targets.append(t.replace('t.me/', 't.me/s/'))
+                    else: targets.append(t)
         except: pass
 
     targets = list(set(targets))
-    print(f"🚀 Начинаю поиск по {len(targets)} источникам...")
-
     all_hy2 = []
     with ThreadPoolExecutor(max_workers=20) as ex:
         results = list(ex.map(scrape_source, targets))
@@ -67,8 +64,8 @@ def run():
     if unique_hy2:
         with open(OUTPUT_FILE, "w", encoding='utf-8') as f: 
             f.write("\n".join(unique_hy2))
-        print(f"🎉 ПОБЕДА! Собрано {len(unique_hy2)} Hy2 конфигов!")
+        print(f"🎉 Стелла нашла {len(unique_hy2)} живых Hy2!")
     else:
-        print("💀 Глухо. Hy2 в этих источниках сейчас нет.")
+        print("💀 Даже новые ссылки молчат. Hy2 сегодня в дефиците.")
 
 if __name__ == '__main__': run()
