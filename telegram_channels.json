@@ -5,11 +5,29 @@
     "V2ray_Alpha",
     "free4all_vpn",
     "v2rayng_org",
-    "Shadowsocks_v2ray"
+    "Shadowsocks_v2ray",
+    "directvpn"
   ],
   "github_urls": [
-    "https://raw.githubusercontent.com/mshojaei77/v2rayAuto/main/mix",
-    "https://raw.githubusercontent.com/AvenCores/goida-vpn-configs/main/all.txt",
-    "https://raw.githubusercontent.com/vfarid/v2ray-worker-sub/master/sub/v2ray.txt"
+    "https://raw.githubusercontent.com/mermeroo/Loon/main/node",
+    "https://raw.githubusercontent.com/mermeroo/Clash-V2ray/main/v2ray",
+    "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/All_Configs_Sub.txt",
+    "https://raw.githubusercontent.com/personqianduixue/SubCrawler/main/sub/share/all",
+    "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt",
+    "https://raw.githubusercontent.com/w1770946466/Auto_proxy/main/Long_term_subscription_num",
+    "https://raw.githubusercontent.com/rxsweet/proxies/main/sub/free.yaml",
+    "https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/clashmeta.yaml",
+    "https://raw.githubusercontent.com/itsyebekhe/PSG/main/subscriptions/clash/mix",
+    "https://raw.githubusercontent.com/mheidari98/.proxy/main/all",
+    "https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/sub.txt",
+    "https://raw.githubusercontent.com/snakem982/proxypool/main/source/v2ray.txt",
+    "https://raw.githubusercontent.com/Surfboardv2ray/TGParse/main/python/hysteria2",
+    "https://raw.githubusercontent.com/tbbatbb/Proxy/master/dist/clash.config.yaml",
+    "https://raw.githubusercontent.com/Alvin9999/pac2/master/clash/1/config.yaml",
+    "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/clash.yml",
+    "https://raw.githubusercontent.com/vveg26/chromego_merge/main/sub/merged_proxies.yaml",
+    "https://raw.githubusercontent.com/rxsweet/proxies/main/sub/sources/dynamicAll.yaml",
+    "https://raw.githubusercontent.com/10ium/MihomoSaz/main/Sublist/MatinGhanbari_v2ray-configs-super-sub.yaml",
+    "https://raw.githubusercontent.com/MrMohebi/xray-proxy-grabber-telegram/master/collected-proxies/row-url/all.txt"
   ]
 }
