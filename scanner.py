@@ -1,27 +1,33 @@
-import os, re, requests, json
+import os, re, requests
 
 def run():
-    if not os.path.exists("telegram_channels.json"): return
-    with open("telegram_channels.json", "r") as f: sources = json.load(f)
+    # Твои основные источники + новый ShadowProxy66
+    channels = ["ShadowProxy66", "v2ray_free-v2ray", "v2ray_free_conf", "V2ray_Alpha"]
     
     results = []
-    print(f"📡 Сканирую {len(sources)} каналов...")
-    
-    for url in sources:
+    print(f"📡 Стелла выходит на охоту за свежим мясом...")
+
+    for channel in channels:
         try:
-            # Превращаем в формат предпросмотра, если это ТГ
-            target = url.replace('t.me/', 't.me/s/') if 't.me' in url else url
-            r = requests.get(target, timeout=10)
+            url = f"https://t.me/s/{channel}"
+            r = requests.get(url, timeout=15)
             if r.status_code == 200:
-                # Ищем Hy2 (без лишних проверок)
-                found = re.findall(r'hy2://[^\s,"\'\]<>]+', r.text)
+                # Ищем Hy2, Vless и Reality (самые ходовые)
+                # Регулярка теперь более гибкая, чтобы мусор не лип
+                found = re.findall(r'(hy2://[^\s<"\'\]]+|vless://[^\s<"\'\]]+|reality://[^\s<"\'\]]+)', r.text)
                 if found:
                     results.extend(found)
-                    print(f"✅ +{len(found)} с {url}")
-        except: continue
+                    print(f"✅ Канал @{channel}: Выжато {len(found)} конфигов!")
+        except Exception as e:
+            print(f"⚠️ Ошибка на @{channel}: {e}")
 
-    unique = list(set(results))
-    with open("live_configs.txt", "w") as f: f.write("\n".join(unique))
-    print(f"🎉 Итог: Найдено {len(unique)} Hy2.")
+    unique = sorted(list(set(results)))
+    
+    if unique:
+        with open("live_configs.txt", "w", encoding='utf-8') as f:
+            f.write("\n".join(unique))
+        print(f"🎉 Итог: Собрано {len(unique)} уникальных ссылок!")
+    else:
+        print("💀 Сегодня админы жадничают. Пусто.")
 
 if __name__ == '__main__': run()
