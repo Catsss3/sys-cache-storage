@@ -1,52 +1,73 @@
-import os, re, requests, json
+import os
+import re
+import json
+import socket
+import requests
+import concurrent.futures
+from urllib.parse import urlparse
 
-def is_reality(link):
-    # Проверяем, есть ли признаки Reality
+# --- Константы ---
+SOURCE_FILE = "telegram_channels.json"
+OUTPUT_FILE = "live_configs.txt"
+MAX_WORKERS = 50
+TCP_TIMEOUT = 3.0
+REQUEST_TIMEOUT = 10
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+
+def is_reality(link: str) -> bool:
     if "vless://" in link:
         return "security=reality" in link or "pbk=" in link
-    return True # Hy2 пропускаем всегда
+    return True
+
+def check_tcp(link: str, timeout: float = TCP_TIMEOUT) -> bool:
+    try:
+        normalized = link.replace('hy2://', 'https://').replace('vless://', 'https://')
+        parsed = urlparse(normalized)
+        host = parsed.hostname
+        port = parsed.port
+        if not host or not port: return False
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except:
+        return False
+
+def fetch_links_from_channel(url: str) -> list:
+    try:
+        target = url.replace('t.me/', 't.me/s/') if 't.me' in url else url
+        response = requests.get(target, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+        if response.status_code != 200: return []
+        pattern = r'(hy2://[^\s<"\'\]\#]+|vless://[^\s<"\'\]\#]+)'
+        return re.findall(pattern, response.text)
+    except:
+        return []
 
 def run():
-    SOURCE_FILE = "telegram_channels.json"
-    if not os.path.exists(SOURCE_FILE): return
-
-    with open(SOURCE_FILE, "r") as f:
+    if not os.path.exists(SOURCE_FILE):
+        print(f"❌ Файл {SOURCE_FILE} не найден.")
+        return
+    with open(SOURCE_FILE, "r", encoding="utf-8") as f:
         sources = json.load(f)
     
-    results = []
-    print(f"📡 Стелла включает VIP-фильтр по {len(sources)} источникам...")
-
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-
+    print(f"📡 Обрабатываю {len(sources)} каналов...")
+    raw_results = []
     for url in sources:
-        try:
-            target = url.replace('t.me/', 't.me/s/') if 't.me' in url else url
-            r = requests.get(target, headers=headers, timeout=10)
-            if r.status_code == 200:
-                # Первичный сбор всех Hy2 и Vless
-                raw_found = re.findall(r'(hy2://[^\s<"\'\]#]+|vless://[^\s<"\'\]#]+)', r.text)
-                
-                # Фильтруем: оставляем только Hy2 и Reality
-                for link in raw_found:
-                    if is_reality(link):
-                        results.append(link)
-                
-                # Заглядываем в подписки (там часто самый сок Reality)
-                subs = re.findall(r'https?://[^\s<"\'\]]+/(?:sub|subscribe)\?[^\s<"\'\]]+', r.text)
-                for s_url in subs[:2]:
-                    try:
-                        sr = requests.get(s_url, timeout=7)
-                        s_raw = re.findall(r'(hy2://[^\s<"\'\]#]+|vless://[^\s<"\'\]#]+)', sr.text)
-                        for s_link in s_raw:
-                            if is_reality(s_link):
-                                results.append(s_link)
-                    except: continue
-        except: continue
+        links = fetch_links_from_channel(url)
+        raw_results.extend([ln for ln in links if is_reality(ln)])
 
-    unique = sorted(list(set(results)))
-    with open("live_configs.txt", "w", encoding='utf-8') as f:
-        f.write("\n".join(unique))
-    
-    print(f"🎉 VIP-ИТОГ: Собрано {len(unique)} элитных конфигов (Hy2 + Reality)!")
+    unique_raw = list(set(raw_results))
+    print(f"🧬 Найдено {len(unique_raw)} уникальных ссылок. TCP-проверка...")
 
-if __name__ == '__main__': run()
+    final_list = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_link = {executor.submit(check_tcp, link): link for link in unique_raw}
+        for future in concurrent.futures.as_completed(future_to_link):
+            link = future_to_link[future]
+            if future.result():
+                final_list.append(link)
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        f.write("\n".join(final_list))
+    print(f"🎉 Готово! {len(final_list)} живых конфигов записаны.")
+
+if __name__ == '__main__':
+    run()
