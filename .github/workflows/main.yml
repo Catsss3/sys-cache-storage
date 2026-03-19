@@ -2,8 +2,8 @@ name: Blondie-Auto-Scanner
 
 on:
   schedule:
-    - cron: '0 */12 * * *'   # Каждые 12 часов
-  workflow_dispatch:          # Ручной запуск
+    - cron: '0 */12 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -15,13 +15,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0      # Полная история для стабильного push
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-          cache: 'pip'        # Кэширование библиотек для скорости ⚡
+          # Убрала cache: 'pip', так как у нас нет файла requirements.txt
 
       - name: Install dependencies
         run: |
@@ -38,12 +38,18 @@ jobs:
           git config --global user.name "Blondie-Bot"
           git config --global user.email "bot@stella.ai"
 
-          # Проверяем, изменился ли файл с конфигами
-          if git diff --quiet live_configs.txt; then
-            echo "✨ Изменений в live_configs.txt не обнаружено. Завершаю."
+          # Проверяем наличие файла перед диффом, чтобы не упасть
+          if [ -f live_configs.txt ]; then
+            if git diff --quiet live_configs.txt; then
+              echo "✨ Изменений не обнаружено."
+            else
+              git add live_configs.txt
+              git commit -m "👱‍♀️ Stella: Авто‑обновление элитных конфигов ✨"
+              git push origin HEAD:main
+            fi
           else
+            # Если файла еще нет, просто добавляем его
             git add live_configs.txt
-            git commit -m "👱‍♀️ Stella: Авто‑обновление элитных конфигов ✨"
-            # Используем force-with-lease для безопасности, если были ручные правки
+            git commit -m "👱‍♀️ Stella: Первая инициализация конфигов ✨"
             git push origin HEAD:main
           fi
