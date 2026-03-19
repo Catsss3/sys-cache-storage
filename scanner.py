@@ -2,8 +2,10 @@ import os
 import re
 import json
 import socket
+import base64
 import requests
 import concurrent.futures
+from threading import Semaphore
 from urllib.parse import urlparse
 
 # -------------------------------------------------
@@ -11,129 +13,137 @@ from urllib.parse import urlparse
 # -------------------------------------------------
 SOURCE_FILE = "telegram_channels.json"
 OUTPUT_FILE = "live_configs.txt"
-MAX_WORKERS = 100       # Оставляем 100, Стелла любит скорость
-TCP_TIMEOUT = 2.0       # Оптимально для быстрой отбраковки
-REQUEST_TIMEOUT = 10    # Для тяжелых страниц ТГ
+
+MAX_TCP_WORKERS = 100          # Агрессивная проверка портов
+MAX_HTTP_WORKERS = 15          # Бережный парсинг источников
+TCP_TIMEOUT = 2.0
+REQUEST_TIMEOUT = 12
+
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
 
+# Используем сессию для ускорения HTTP-запросов
+session = requests.Session()
+session.headers.update(HEADERS)
+
 # -------------------------------------------------
-# Вспомогательные функции
+# Валидация и декодирование
 # -------------------------------------------------
 
 def is_valid_config(link: str) -> bool:
-    """
-    Проверка на минимальную валидность.
-    VLESS берем только с Reality параметрами.
-    """
-    if not link:
-        return False
-    if link.startswith("vless://"):
-        return "security=reality" in link.lower() or "pbk=" in link.lower()
-    return True
+    """Только VLESS (Reality) и живые HY2/TUIC."""
+    ln = link.lower()
+    if ln.startswith("vless://"):
+        return "security=reality" in ln or "pbk=" in ln
+    return ln.startswith(("hy2://", "tuic://"))
 
 def check_tcp(link: str, timeout: float = TCP_TIMEOUT) -> bool:
-    """
-    Проверяет, открыт ли порт на сервере.
-    """
+    """Проверка доступности хоста и порта."""
     try:
-        # Подменяем протокол для корректного парсинга хоста и порта
-        norm = re.sub(r'^(hy2|vless|tuic)://', 'https://', link)
+        # Убираем лишние пробелы и готовим для парсинга
+        norm = re.sub(r"^(hy2|vless|tuic)://", "https://", link.strip(), flags=re.IGNORECASE)
         parsed = urlparse(norm)
-        host = parsed.hostname
-        port = parsed.port
-        
+        host, port = parsed.hostname, parsed.port
         if not host or not port:
             return False
 
-        # Используем контекстный менеджер для автоматического закрытия
-        with socket.create_connection((host, port), timeout=timeout) as sock:
-            # На всякий случай явно сигнализируем о завершении
-            sock.shutdown(socket.SHUT_RDWR)
+        # Попытка установить соединение
+        with socket.create_connection((host, port), timeout=timeout):
             return True
-    except (socket.timeout, ConnectionRefusedError, OSError):
-        return False
-    except Exception:
+    except:
         return False
 
-def fetch_links_from_channel(url: str) -> list:
-    """
-    Парсит публичную версию ТГ-канала (/s/).
-    """
+def fetch_links_from_source(url: str) -> list:
+    """Универсальный парсер: TG, GitHub, API, Base64."""
     try:
-        # Переключаемся на веб-превью, если ссылка обычная
+        # Подготовка URL для Telegram
         target = url.replace("t.me/", "t.me/s/") if "t.me/" in url and "/s/" not in url else url
         
-        response = requests.get(target, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-        if response.status_code != 200:
+        resp = session.get(target, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+        if resp.status_code != 200:
             return []
 
-        # Улучшенная регулярка: ищем до первого пробела или спецсимвола, исключая мусор в конце
+        content = resp.text
+
+        # Декодирование Base64 (если в тексте нет явных ссылок)
+        if not any(proto in content for proto in ("vless://", "hy2://", "tuic://")):
+            try:
+                # Очистка и паддинг
+                b64_candidate = re.sub(r"\s+", "", content)
+                missing = len(b64_candidate) % 4
+                if missing:
+                    b64_candidate += "=" * (4 - missing)
+                
+                decoded = base64.b64decode(b64_candidate, validate=False).decode("utf-8", errors="ignore")
+                content = decoded
+            except:
+                pass
+
+        # Поиск ссылок по элитному паттерну (с негативным просмотром назад)
         pattern = r"(?:hy2|vless|tuic)://[^\s<\"'|]+(?<![.,;!])"
-        found = re.findall(pattern, response.text)
+        found = re.findall(pattern, content, flags=re.IGNORECASE)
 
         return [ln for ln in found if is_valid_config(ln)]
-    except Exception as e:
-        # Можно раскомментировать для отладки: print(f"Ошибка парсинга {url}: {e}")
+    except:
         return []
 
 # -------------------------------------------------
-# Основная логика
+# Основной процесс
 # -------------------------------------------------
 
 def run():
     if not os.path.exists(SOURCE_FILE):
-        print(f"❌ Ошибка: Файл {SOURCE_FILE} не найден в директории.")
+        print(f"❌ Файл {SOURCE_FILE} не найден.")
         return
 
-    try:
-        with open(SOURCE_FILE, "r", encoding="utf-8") as f:
-            sources = json.load(f)
-    except json.JSONDecodeError:
-        print(f"❌ Ошибка: {SOURCE_FILE} имеет неверный формат JSON.")
-        return
+    with open(SOURCE_FILE, "r", encoding="utf-8") as f:
+        sources = json.load(f)
 
-    print(f"📡 Стелла на связи. Начинаю сбор из {len(sources)} источников...")
-    
-    # Используем set для автоматического удаления дубликатов при сборе
+    print(f"📡 Стелла начинает сбор. Источников: {len(sources)}")
     unique_links = set()
+    http_semaphore = Semaphore(MAX_HTTP_WORKERS)
 
-    for i, url in enumerate(sources, 1):
-        links = fetch_links_from_channel(url)
-        if links:
-            unique_links.update(links)
-        
-        # Индикатор прогресса, чтобы Слава не скучал
-        if i % 10 == 0 or i == len(sources):
-            print(f"   [Прогресс: {i}/{len(sources)}] Собрано уникальных: {len(unique_links)}")
+    def safe_fetch(u):
+        with http_semaphore:
+            return fetch_links_from_source(u)
+
+    # 1. Сбор ссылок
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_HTTP_WORKERS) as pool:
+        futures = {pool.submit(safe_fetch, url): url for url in sources}
+        for i, future in enumerate(concurrent.futures.as_completed(futures), 1):
+            links = future.result()
+            if links:
+                unique_links.update(links)
+            if i % 50 == 0:
+                print(f"   [Парсинг] {i}/{len(sources)} каналов → {len(unique_links)} уникальных ссылок")
 
     if not unique_links:
-        print("📭 Ссылок не найдено. Возможно, источники пусты.")
+        print("📭 Улов пуст. Проверь источники!")
         return
 
-    print(f"🧬 Запускаю TCP‑проверку в {MAX_WORKERS} потоков...")
-
+    # 2. TCP Проверка
+    print(f"🧬 Запускаю TCP-чек для {len(unique_links)} ссылок...")
     final_results = []
-    # Используем ThreadPoolExecutor для параллельной проверки портов
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        future_to_link = {executor.submit(check_tcp, link): link for link in unique_links}
-        
-        for future in concurrent.futures.as_completed(future_to_link):
-            link = future_to_link[future]
-            try:
-                if future.result():
-                    final_results.append(link)
-            except Exception:
-                pass
+    checked = 0
 
-    # Сохраняем результат в файл
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_TCP_WORKERS) as pool:
+        future_to_link = {pool.submit(check_tcp, l): l for l in unique_links}
+        for future in concurrent.futures.as_completed(future_to_link):
+            checked += 1
+            if future.result():
+                final_results.append(future_to_link[future])
+            if checked % 200 == 0 or checked == len(unique_links):
+                print(f"   [TCP] Проверено {checked}/{len(unique_links)} → {len(final_results)} живых")
+
+    # 3. Сохранение
+    final_results.sort()
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         f.write("\n".join(final_results))
 
-    print("-" * 30)
-    print(f"💎 Финал: {len(final_results)} рабочих конфигов сохранены в {OUTPUT_FILE}")
-    print(f"📊 Эффективность: {round(len(final_results)/len(unique_links)*100, 1)}% от найденных.")
+    print("-" * 40)
+    print(f"💎 Стелла закончила! Рабочих конфигов: {len(final_results)}")
+    print(f"📂 Файл сохранен: {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     run()
