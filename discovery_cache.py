@@ -8,46 +8,46 @@ def discover():
     print(f"🔎 База до поиска: {len(channels_set)}")
     new_found = 0
 
-    # --- 1. ПОИСК ЧЕРЕЗ DUCKDUCKGO (Без API ключей) ---
-    print("🦆 Ищем через DuckDuckGo...")
-    search_queries = ['site:t.me "proxy"', 'site:t.me "vless"', 'site:t.me "hysteria2"']
-    for q in search_queries:
+    # Используем raw-строки для регулярок, чтобы не было Warning
+    tg_pattern = r't\.me/[a-zA-Z0-9_+]{5,}'
+
+    # --- 1. УСИЛЕННЫЙ ПОИСК DUCKDUCKGO ---
+    print("🦆 Стелла уходит в глубокий поиск DuckDuckGo...")
+    # Добавляем специфику: Hysteria2, Reality, Shadowsocks
+    queries = [
+        'site:t.me "hysteria2"', 
+        'site:t.me "vless reality"', 
+        'site:github.com "proxy list" extension:txt',
+        'site:pastebin.com "vless://"'
+    ]
+    
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+
+    for q in queries:
         try:
-            url = f"https://duckduckgo.com/html/?q={q}"
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            res = requests.get(url, headers=headers, timeout=15)
-            links = re.findall(r't\.me/[a-zA-Z0-9_+]{5,}', res.text)
-            for l in links:
+            # Используем облегченную версию DDG для парсинга
+            res = requests.get(f"https://duckduckgo.com/html/?q={q}", headers=headers, timeout=15)
+            found = re.findall(tg_pattern, res.text)
+            for l in found:
                 full = "https://" + l
                 if full not in channels_set:
                     channels_set.add(full); new_found += 1
+            time.sleep(2) # Пауза, чтобы не забанили
         except: continue
 
-    # --- 2. ПОИСК ПО GITHUB GISTS (Последние обновленные) ---
-    print("🐙 Ищем в GitHub Gists...")
-    try:
-        # Ищем gists с упоминанием прокси
-        res = requests.get("https://api.github.com/search/code?q=t.me+extension:txt+vless", 
-                           headers={'Authorization': f'token {os.getenv("GITHUB_TOKEN")}'} if os.getenv("GITHUB_TOKEN") else {})
-        # Для простоты берем прямые линки на выдачу
-        gist_links = re.findall(r't\.me/[a-zA-Z0-9_+]{5,}', res.text)
-        for l in gist_links:
-            full = "https://" + l
-            if full not in channels_set:
-                channels_set.add(full); new_found += 1
-    except: pass
-
-    # --- 3. ПАРСИНГ ЖИВЫХ ТЕЛЕГРАМ-АГРЕГАТОРОВ ---
-    print("📡 Парсим агрегаторы...")
-    collectors = [
-        "https://raw.githubusercontent.com/yebekhe/TelegramV2rayCollector/main/README.md",
-        "https://raw.githubusercontent.com/m0neer/Proxy-List/main/README.md"
+    # --- 2. GITHUB GISTS & SEARCH ---
+    print("🐙 Проверяем свежие Gists и репозитории...")
+    # Поиск по заголовкам файлов в GitHub
+    search_urls = [
+        "https://api.github.com/search/repositories?q=vless+stars:>10&sort=updated",
+        "https://api.github.com/search/repositories?q=proxy+collector&sort=updated"
     ]
-    for c in collectors:
+    for url in search_urls:
         try:
-            res = requests.get(c, timeout=15)
-            links = re.findall(r't\.me/[a-zA-Z0-9_+]{5,}', res.text)
-            for l in links:
+            res = requests.get(url, headers=headers, timeout=15)
+            # Ищем любые упоминания t.me в описаниях или коде
+            found = re.findall(tg_pattern, res.text)
+            for l in found:
                 full = "https://" + l
                 if full not in channels_set:
                     channels_set.add(full); new_found += 1
@@ -58,8 +58,8 @@ def discover():
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(final_list, f, indent=2, ensure_ascii=False)
     
-    print(f"✨ Стелла нашла новых: {new_found}")
-    print(f"📊 Итого в обойме: {len(final_list)}")
+    print(f"✨ Стелла накопала новых: {new_found}")
+    print(f"📊 Итоговая мощь: {len(final_list)} источников")
 
 if __name__ == '__main__':
     discover()
