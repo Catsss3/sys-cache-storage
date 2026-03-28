@@ -1,51 +1,65 @@
-import json, os, requests, re
+import json, os, requests, re, time
 
 def discover():
     file_path = 'telegram_channels.json'
-    
-    # 1. Загружаем текущую базу (наши 1124+ строк)
-    if os.path.exists(file_path):
-        with open(file_path, 'r', encoding='utf-8') as f:
-            try:
-                channels = json.load(f)
-                if not isinstance(channels, list): channels = []
-            except: channels = []
-    else:
-        channels = []
+    with open(file_path, 'r', encoding='utf-8') as f:
+        channels_set = set(json.load(f))
 
-    print(f"🔎 Исходная база: {len(channels)} каналов")
-
-    # 2. Цели для поиска новых каналов
-    search_targets = [
-        "https://raw.githubusercontent.com/Catsss3/web-assets-static/main/sources/telegram_channels.json",
-        "https://raw.githubusercontent.com/soroushmirzaei/telegram-proxies-collector/main/channels",
-        "https://raw.githubusercontent.com/v2ray-worker/v2ray-worker/main/sub/sub_merge.txt"
-    ]
-
+    print(f"🔎 База до поиска: {len(channels_set)}")
     new_found = 0
-    # Превращаем в set для моментальной проверки на дубликаты
-    channels_set = set(channels)
-    
-    for url in search_targets:
+
+    # --- 1. ПОИСК ЧЕРЕЗ DUCKDUCKGO (Без API ключей) ---
+    print("🦆 Ищем через DuckDuckGo...")
+    search_queries = ['site:t.me "proxy"', 'site:t.me "vless"', 'site:t.me "hysteria2"']
+    for q in search_queries:
         try:
-            res = requests.get(url, timeout=15)
-            if res.status_code == 200:
-                # Ищем всё, что похоже на ссылки t.me/название
-                found = re.findall(r't\.me/[a-zA-Z0-9_+]{3,}', res.text)
-                for item in found:
-                    full_link = "https://" + item
-                    if full_link not in channels_set:
-                        channels_set.add(full_link)
-                        new_found += 1
+            url = f"https://duckduckgo.com/html/?q={q}"
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            res = requests.get(url, headers=headers, timeout=15)
+            links = re.findall(r't\.me/[a-zA-Z0-9_+]{5,}', res.text)
+            for l in links:
+                full = "https://" + l
+                if full not in channels_set:
+                    channels_set.add(full); new_found += 1
         except: continue
 
-    # 3. Сохраняем результат, сортируем для красоты
+    # --- 2. ПОИСК ПО GITHUB GISTS (Последние обновленные) ---
+    print("🐙 Ищем в GitHub Gists...")
+    try:
+        # Ищем gists с упоминанием прокси
+        res = requests.get("https://api.github.com/search/code?q=t.me+extension:txt+vless", 
+                           headers={'Authorization': f'token {os.getenv("GITHUB_TOKEN")}'} if os.getenv("GITHUB_TOKEN") else {})
+        # Для простоты берем прямые линки на выдачу
+        gist_links = re.findall(r't\.me/[a-zA-Z0-9_+]{5,}', res.text)
+        for l in gist_links:
+            full = "https://" + l
+            if full not in channels_set:
+                channels_set.add(full); new_found += 1
+    except: pass
+
+    # --- 3. ПАРСИНГ ЖИВЫХ ТЕЛЕГРАМ-АГРЕГАТОРОВ ---
+    print("📡 Парсим агрегаторы...")
+    collectors = [
+        "https://raw.githubusercontent.com/yebekhe/TelegramV2rayCollector/main/README.md",
+        "https://raw.githubusercontent.com/m0neer/Proxy-List/main/README.md"
+    ]
+    for c in collectors:
+        try:
+            res = requests.get(c, timeout=15)
+            links = re.findall(r't\.me/[a-zA-Z0-9_+]{5,}', res.text)
+            for l in links:
+                full = "https://" + l
+                if full not in channels_set:
+                    channels_set.add(full); new_found += 1
+        except: continue
+
+    # СОХРАНЕНИЕ
     final_list = sorted(list(channels_set))
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(final_list, f, indent=2, ensure_ascii=False)
     
-    print(f"✨ Поиск завершен! Добавлено новых: {new_found}")
-    print(f"📊 Итого в базе: {len(final_list)} каналов")
+    print(f"✨ Стелла нашла новых: {new_found}")
+    print(f"📊 Итого в обойме: {len(final_list)}")
 
 if __name__ == '__main__':
     discover()
