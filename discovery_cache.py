@@ -1,4 +1,4 @@
-import json, os, requests, re, time
+import json, os, requests, re, time, base64
 
 def discover():
     file_path = 'telegram_channels.json'
@@ -7,50 +7,40 @@ def discover():
 
     print(f"🔎 База до поиска: {len(channels_set)}")
     new_found = 0
-
-    # Используем raw-строки для регулярок, чтобы не было Warning
     tg_pattern = r't\.me/[a-zA-Z0-9_+]{5,}'
+    # Паттерн для поиска ссылок-подписок
+    sub_url_pattern = r'https?://[^\s<>"]+/(?:sub|subscribe|api/v1/client/subscribe)\?[^\s<>"]+'
 
-    # --- 1. УСИЛЕННЫЙ ПОИСК DUCKDUCKGO ---
-    print("🦆 Стелла уходит в глубокий поиск DuckDuckGo...")
-    # Добавляем специфику: Hysteria2, Reality, Shadowsocks
-    queries = [
-        'site:t.me "hysteria2"', 
-        'site:t.me "vless reality"', 
-        'site:github.com "proxy list" extension:txt',
-        'site:pastebin.com "vless://"'
-    ]
-    
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
+    # --- 1. ТВОЙ СТАРЫЙ ПОИСК (КАНАЛЫ) ---
+    queries = ['site:t.me "hysteria2"', 'site:t.me "vless reality"', 'site:github.com "proxy list"']
     for q in queries:
         try:
-            # Используем облегченную версию DDG для парсинга
             res = requests.get(f"https://duckduckgo.com/html/?q={q}", headers=headers, timeout=15)
             found = re.findall(tg_pattern, res.text)
             for l in found:
                 full = "https://" + l
                 if full not in channels_set:
                     channels_set.add(full); new_found += 1
-            time.sleep(2) # Пауза, чтобы не забанили
         except: continue
 
-    # --- 2. GITHUB GISTS & SEARCH ---
-    print("🐙 Проверяем свежие Gists и репозитории...")
-    # Поиск по заголовкам файлов в GitHub
-    search_urls = [
-        "https://api.github.com/search/repositories?q=vless+stars:>10&sort=updated",
-        "https://api.github.com/search/repositories?q=proxy+collector&sort=updated"
+    # --- 2. НОВЫЙ БЛОК: ОХОТА ЗА ПОДПИСКАМИ (GISTS & PASTEBIN) ---
+    print("💎 Стелла ищет скрытые подписки...")
+    sub_queries = [
+        'site:github.com "sub/link" extension:txt',
+        'site:pastebin.com "subscribe?token="',
+        'site:gist.github.com "v2ray" "sub"'
     ]
-    for url in search_urls:
+    for q in sub_queries:
         try:
-            res = requests.get(url, headers=headers, timeout=15)
-            # Ищем любые упоминания t.me в описаниях или коде
-            found = re.findall(tg_pattern, res.text)
-            for l in found:
-                full = "https://" + l
-                if full not in channels_set:
-                    channels_set.add(full); new_found += 1
+            res = requests.get(f"https://duckduckgo.com/html/?q={q}", headers=headers, timeout=15)
+            # Ищем URL подписок
+            subs = re.findall(sub_url_pattern, res.text)
+            for s in subs:
+                # Мы можем либо сохранить саму подписку, либо добавить её в базу каналов для парсинга
+                if s not in channels_set:
+                    channels_set.add(s); new_found += 1
         except: continue
 
     # СОХРАНЕНИЕ
@@ -58,8 +48,8 @@ def discover():
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(final_list, f, indent=2, ensure_ascii=False)
     
-    print(f"✨ Стелла накопала новых: {new_found}")
-    print(f"📊 Итоговая мощь: {len(final_list)} источников")
+    print(f"✨ Стелла добавила новых источников (включая подписки): {new_found}")
+    print(f"📊 Итого в обойме: {len(final_list)}")
 
 if __name__ == '__main__':
     discover()
