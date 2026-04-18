@@ -5,76 +5,51 @@ import requests
 
 FILE_PATH = Path("telegram_channels.json")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-TIMEOUT = 20
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+GEMINI_KEY = os.getenv("GEMINI_KEY")
+TIMEOUT = 25
 
+# Используем raw-строки для регулярок, чтобы не было SyntaxWarning
 TG_PATTERN = re.compile(r"(?:t\.me|telegram\.me)/[a-zA-Z0-9_+]{5,}")
-SUB_URL_PATTERN = re.compile(r"https?://[^\s<>\"']+/(?:sub|subscribe|api/v1/client/subscribe)\?[^\s<>\"']+")
+# Исправленная регулярка для поиска ссылок
+SUB_URL_PATTERN = re.compile(r"https?://[^\s<>\"']+(?:sub|subscribe|api/v1/client/subscribe)\?[^\s<>\"']+")
 
-def fetch(url, params=None, headers=None):
-    hdr = {"User-Agent": USER_AGENT}
-    if headers: hdr.update(headers)
+def fetch(url, params=None, headers=None, method='GET', json_data=None):
+    hdr = {"User-Agent": "Mozilla/5.0"}
     try:
-        resp = requests.get(url, params=params, headers=hdr, timeout=TIMEOUT)
-        return resp
+        if method == 'POST': return requests.post(url, json=json_data, timeout=TIMEOUT)
+        return requests.get(url, params=params, timeout=TIMEOUT)
     except: return None
 
-def extract_links(html):
-    ch = {f"https://{m}" for m in TG_PATTERN.findall(html)}
-    sub = set(SUB_URL_PATTERN.findall(html))
-    return ch, sub
-
-def get_gists():
-    new_sub = set()
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
-    resp = fetch("https://api.github.com/gists/public", headers=headers)
-    if resp and resp.status_code == 200:
-        for gist in resp.json()[:30]:
-            for fn, fdata in gist.get("files", {}).items():
-                if any(k in fn.lower() for k in ("sub", "v2ray", "proxy")):
-                    raw = fdata.get("raw_url")
-                    if raw: new_sub.add(raw)
-    return new_sub
-
-def github_code_search():
-    if not GITHUB_TOKEN: return set()
-    new_sub = set()
-    url = "https://api.github.com/search/code"
-    params = {"q": "sub in:url extension:txt extension:json", "per_page": 50}
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    resp = fetch(url, params=params, headers=headers)
-    if resp and resp.status_code == 200:
-        for item in resp.json().get("items", []):
-            raw = item.get("html_url", "").replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
-            new_sub.add(raw)
-    return new_sub
-
-def tg_web_crawl():
-    aggregators = ["proxylistdaily", "v2raycollector", "v2ray_free_conf", "v2rayng_org", "v2ray_outline"]
-    new_sub = set()
-    for channel in aggregators:
-        url = f"https://t.me/s/{channel}"
-        resp = fetch(url)
-        if resp:
-            _, subs = extract_links(resp.text)
-            new_sub.update(subs)
-    return new_sub
+def gemini_search():
+    if not GEMINI_KEY: return set()
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+    queries = ['v2ray subscription link 2026', 'vless reality sub github', 'hysteria2 config t.me']
+    found_links = set()
+    for q in queries:
+        payload = {"contents": [{"parts": [{"text": f"Search the web for {q} and list ONLY raw URLs of subscriptions or TG channels, one per line."}]}]}
+        resp = fetch(endpoint, method='POST', json_data=payload)
+        if resp and resp.status_code == 200:
+            text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            # Вытаскиваем все подходящие ссылки
+            found_links.update(re.findall(r'https?://[^\s<>\"\'\)]+', text))
+            for m in TG_PATTERN.findall(text):
+                found_links.add("https://" + m)
+    return found_links
 
 def main():
-    existing = set()
     if FILE_PATH.is_file():
-        with open(FILE_PATH, "r", encoding="utf-8") as f:
-            existing = set(json.load(f))
+        with open(FILE_PATH, "r") as f: data = set(json.load(f))
+    else: data = set()
     
-    print(f"🔎 База до поиска: {len(existing)}")
-    all_found = get_gists() | github_code_search() | tg_web_crawl()
-    new_items = all_found - existing
-    print(f"✨ Стелла нашла новых: {len(new_items)}")
+    print(f"🔎 База до: {len(data)}")
+    new_found = gemini_search()
     
-    updated = sorted(list(existing | all_found))
-    with open(FILE_PATH, "w", encoding="utf-8") as f:
-        json.dump(updated, f, indent=2, ensure_ascii=False)
-    print(f"📊 Итого в обойме: {len(updated)}")
+    final_data = sorted(list(data | new_found))
+    print(f"✨ Нашла новых: {len(final_data) - len(data)}")
+    
+    with open(FILE_PATH, "w") as f:
+        json.dump(final_data, f, indent=2, ensure_ascii=False)
+    print(f"📊 Итого: {len(final_data)}")
 
 if __name__ == '__main__':
     main()
