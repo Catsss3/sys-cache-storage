@@ -478,6 +478,7 @@
   "https://gist.githubusercontent.com/rh-operator-bundle-bot/3c901406667f3723ba8f7d8c7906f933/raw/842d27c5e154e55410e61060a6f1e42c8b094ecf/rbln-npu-operator-Subscription.json",
   "https://gist.githubusercontent.com/rh-operator-bundle-bot/4952928ff66b4e5608b6e2312b9d8991/raw/3af11c8ceb58a83181cc2f8252773e7a747481c6/tekton-operator-2026-418-Subscription.json",
   "https://gist.githubusercontent.com/rh-operator-bundle-bot/5eb541b5a960bf99f2ac2a418dc4ddea/raw/0b2a3423ad472329262e4221af7ac5a08faa1190/kubeturbo-certified-Subscription.json",
+  "https://gist.githubusercontent.com/rh-operator-bundle-bot/6becbce553035941b77aef78149b2e7f/raw/a7a655fcb84958e736520853790ed9d6f03f6ebf/prometurbo-certified-Subscription.json",
   "https://gist.githubusercontent.com/rh-operator-bundle-bot/883a105672030e4afe8701f212d20138/raw/5cc7af6dad798df1946864c5a5cd53928dbf3189/amd-gpu-operator-Subscription.json",
   "https://gist.githubusercontent.com/rh-operator-bundle-bot/8fdf3c1a30415f91a7f15f432bb8b3ad/raw/65ea8354756bdad9f26cf4731245889def73e45d/sailoperator-Subscription.json",
   "https://gist.githubusercontent.com/rh-operator-bundle-bot/9e8df9adaf95db5afc91c20176bfa681/raw/fcc86e2d1b2b44e763aac50d655366ed2af1102f/trident-operator-Subscription.json",
